@@ -4,8 +4,8 @@ detector (cli2.py).
 
 Compares exactly one Tree-sitter column per baseline column, using only the flat
 CMake-derived fields, so that every disagreement is attributable to the parsing
-technique rather than to a wider heuristic. Signals the baseline cannot express
-are reported separately, for information only.
+technique rather than to a wider heuristic. The wrapper resolution, which the
+baseline cannot express at all, is reported separately for information only.
 
 Usage:
     testing-artifact-detector-compare --regex-file A.csv --ts-file B.csv
@@ -24,7 +24,6 @@ from .comparison import (
     parse_list_column,
     report_language_detection_consistency,
     resolve_column,
-    to_bool,
     write_disagreements,
 )
 
@@ -36,64 +35,11 @@ FAIR_INDICATORS: tuple[Indicator, ...] = (
     Indicator("has_cmake_file", "has_cmakelists", ("has_cmakelists",)),
     Indicator("uses_gtest (find_package)", "uses_gtest", ("cmake_uses_gtest",)),
     Indicator("uses_catch2 (find_package)", "uses_catch2", ("cmake_uses_catch2",)),
+    # has_cpp_tests is what the baseline calls its CMake test finding; despite the
+    # name it has nothing to do with reading C++ sources.
     Indicator("tests_found (add_test/gtest_discover_tests)", "has_cpp_tests", ("cmake_tests_found",)),
     Indicator("gtests_found (gtest_discover_tests)", "gtests_found", ("cmake_gtests_found",)),
 )
-
-
-def report_cpp_source_level_extension(merged: pd.DataFrame) -> None:
-    """
-    Report what the C++ source scan adds, for information only.
-
-    The baseline never reads C++ sources, so these numbers are not counted as
-    agreements or disagreements.
-
-    :param merged: The merged frame produced by compare().
-    """
-
-    print("\n== beyond baseline scope: C++ source-level scan (informational only) ==")
-
-    # The CMake-only detector writes none of these columns. Reporting "nothing to
-    # compare" is the honest answer there; raising would be a tooling failure, not
-    # a finding about the data.
-    required = ("cpp_uses_gtest", "cpp_uses_catch2", "cpp_gtests_found",
-                "has_cpp_tests", "cpp_test_macros_found")
-    missing = [
-        name for name in required
-        if resolve_column(merged.columns, name, "_ts") not in merged.columns
-    ]
-    if missing:
-        print("  the Tree-sitter output carries no C++ columns, nothing to report")
-        return
-
-    for label, cmake_column, cpp_column in (
-        ("uses_gtest", "cmake_uses_gtest", "cpp_uses_gtest"),
-        ("uses_catch2", "cmake_uses_catch2", "cpp_uses_catch2"),
-        ("gtests_found", "cmake_gtests_found", "cpp_gtests_found"),
-    ):
-        cmake_col = resolve_column(merged.columns, cmake_column, "_ts")
-        cpp_col = resolve_column(merged.columns, cpp_column, "_ts")
-
-        additional = merged[
-            merged[cmake_col].apply(to_bool).ne(True) & merged[cpp_col].apply(to_bool).eq(True)
-        ]
-        print(f"  {label}: CMake-only says No/NA, but C++ source scan says Yes for {len(additional)} repos")
-
-    tests_found_col = resolve_column(merged.columns, "cmake_tests_found", "_ts")
-    has_cpp_tests_col = resolve_column(merged.columns, "has_cpp_tests", "_ts")
-    macros_col = resolve_column(merged.columns, "cpp_test_macros_found", "_ts")
-
-    only_source_level = merged[
-        merged[tests_found_col].apply(to_bool).ne(True) & merged[has_cpp_tests_col].apply(to_bool).eq(True)
-    ]
-    macro_sets = only_source_level[macros_col].apply(parse_list_column)
-
-    macros = set()
-    for macro_set in macro_sets:
-        macros |= macro_set
-
-    print(f"  has_cpp_tests: CMake-only says No/NA, but C++ source scan says Yes for {len(only_source_level)} repos")
-    print(f"    (driven by test-framework macros such as: {sorted(macros)})")
 
 
 def report_wrapper_resolution(merged: pd.DataFrame) -> None:
@@ -143,7 +89,6 @@ def main() -> None:
     print(f"Baseline rows: {len(baseline)}, Tree-sitter rows: {len(treesitter)}")
 
     merged, disagreements = compare(baseline, treesitter, FAIR_INDICATORS)
-    report_cpp_source_level_extension(merged)
     report_wrapper_resolution(merged)
     report_language_detection_consistency(merged)
 
