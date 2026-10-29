@@ -5,3 +5,7 @@ __pycache__/
 pyrightconfig.json
 bar/
 foo/
+
+# Ausgabe des Prototyps in src/groundtruth_ts
+out.csv
+sites.jsonl
