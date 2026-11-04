@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.zed/
+pyrightconfig.json
+bar/
+foo/
+
+# Ausgabe des Prototyps in src/groundtruth_ts
+out.csv
+sites.jsonl
