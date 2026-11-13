@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+title: Testing Artifact Detector
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Mario
+    family-names: Frank
+    email: mario.frank@uni-potsdam.de
+    affiliation: University of Potsdam, Germany
+    orcid: 'https://orcid.org/0000-0001-8888-7475'
+identifiers:
+  - description: "This is the collection of archived snapshots of all versions of the Testing Artifact Detector"
+    type: doi
+    value: 10.5281/zenodo.20342681
+  - description: "This is the snapshot of version 0.2.0 of the Testing Artifact Detector"
+    type: doi
+    value: 10.5281/zenodo.20342682
+repository-code: 'https://github.com/SE-UP/testing_artifact_detector'
+url: 'https://github.com/SE-UP/testing_artifact_detector'
+abstract: >-
+  The Testing Artifact Detector is a command line tool that clones and analyses Git repositories for identifiable testing.
+  
+  It supports the detection of Testing of the languages Python, R and C/C++ (CMake) using a static approach, i.e. it does
+  not instrument the analysed projects.
+
+  Currently, the tool works batch based, i.e. based on an input CSV, it tries to analyse all projects and generates an output
+  CSV that summarises findings.
+keywords:
+  - Static Testing identification
+  - Research Software Quality
+license: MIT
