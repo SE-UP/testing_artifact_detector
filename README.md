@@ -60,6 +60,84 @@ A sample configuration, i.e. the exclusions used for the eScience 2026 submissio
 in the root folder. If no configuration is given, default exclusions are set and printed to the
 command line.
 
+# Tree-sitter version (AST-based analysis)
+
+An alternative, Tree-sitter/AST-based analysis path for CMake test-artifact detection
+is available via `testing-artifact-detector-ts` (implemented in `cli2.py`, using the
+modules under `src/testing_artifact_detector/treesitter_detector/`). It takes the same
+kind of input/output as the regex-based tool above:
+
+> testing-artifact-detector-ts --in-file foo/joss_repo_miner_output.csv --out-file foo/treesitter_output.csv --clone-dir bar/
+
+It supports the same `--clone-dir`, `--assume-cloned`, `--clone-only`, and
+`--cloc-config` options as `testing-artifact-detector` (see "Advanced use" above),
+so the same one-shot vs. clone-then-analyse workflow applies. If repositories were
+already cloned into `bar/` by a prior `testing-artifact-detector` run, that same
+clone directory can be reused directly - no need to clone twice.
+
+CMake is this tool's subject, matching the scope of the regex-based detector it is
+compared against. There is no C++ path.
+
+## What it adds over the regex-based tool
+
+A regex answers whether a test command is written somewhere. This tool answers whether
+that place is actually evaluated when CMake processes the project. Two things can
+prevent it, and neither is visible in the text:
+
+- the file is never loaded from the top-level `CMakeLists.txt`, or
+- the `macro`/`function` whose body holds the command is never called.
+
+The unit reported is therefore a **site**: a place where a test command is written,
+together with the verdict on whether it is reached. A site is not a test - one inside a
+`foreach()` registers as many tests as the loop has iterations, and that number is
+deliberately not determined. The counts in the output are counts of sites.
+
+Because this goes beyond what the regex baseline can express, the verdict is reported in
+its own columns (`cmake_tests_reachable`, `cmake_test_sites`, `cmake_sites_invoked`,
+`cmake_sites_file_unreachable`, `cmake_sites_wrapper_uncalled`) rather than folded into
+`cmake_tests_found`, which keeps the baseline heuristics unchanged. Wrappers defined
+outside the repository (e.g. `dune_add_test` from dune-common) cannot be recognised
+without the build environment, which is out of scope for this tool.
+
+## Structured site inventory
+
+`--inventory-out` additionally writes the sites as JSON Lines, one repository per line:
+
+> testing-artifact-detector-ts --in-file foo/joss_repo_miner_output.csv --out-file foo/treesitter_output.csv --clone-dir bar/ --inventory-out foo/test_sites.jsonl
+
+Where the CSV carries per-repository counts, the inventory carries each site: its file
+and line, whether it is an `add_test` or a `gtest_discover_tests`, the verdict, the
+enclosing wrapper if any, the `if()` conditions it sits under (recorded as written, not
+evaluated), and how deeply it is nested in `foreach()` loops.
+
+Further details and options are given by
+
+> testing-artifact-detector-ts --help
+
+# Development prototype
+
+`src/groundtruth_ts/` holds the flat prototype the Tree-sitter detector was developed
+from, kept as a reference point. It is a single script with no classes, no type
+annotations and no package structure - the analysis logic written straight down before
+it was refactored into `treesitter_detector/`.
+
+It needs no installation and runs directly over a directory of already cloned
+repositories:
+
+> python src/groundtruth_ts/main.py bar/            # all repositories
+> python src/groundtruth_ts/main.py bar/ 7958       # one, with every site printed
+
+It writes `out.csv` and `sites.jsonl` into the working directory while it runs, one
+line per repository, so an interrupted run still leaves usable output. The columns and
+the site records carry the same names and values as the packaged tool, which is how the
+two are checked against each other. Neither file is kept in the repository.
+
+`analyze.py` reads such a `sites.jsonl` back and prints the figures that were of
+interest during development - the verdicts, the most frequent `if()` conditions, the
+loop nesting depths, which files the test commands sit in:
+
+> python src/groundtruth_ts/analyze.py sites.jsonl
+
 # Project Structure:
 
 ```
@@ -68,8 +146,12 @@ command line.
 ├── pyproject.toml
 ├── README.md
 ├── src
+│   ├── groundtruth_ts # Flat development prototype, see "Development prototype"
+│   │   ├── analyze.py # Reads a sites.jsonl back and prints figures
+│   │   └── main.py # The whole analysis in one script
 │   └── testing_artifact_detector
-│       ├── cli.py
+│       ├── cli.py # Entry point of the regex-based tool
+│       ├── cli2.py # Entry point of the Tree-sitter version
 │       ├── clone_repo.py # Git cloning infrastructure
 │       ├── config_parsers # Scripts for parsing configuration files
 |       |   ├── cloc_config_parser.py
@@ -84,12 +166,24 @@ command line.
 │       │   ├── check_test_types.py
 │       │   ├── __init__.py
 │       │   └── util.py
+│       ├── treesitter_detector # AST-based analysis (see "Tree-sitter version" above)
+│       │   ├── cmake_ast.py # Node extraction via the Tree-sitter query API
+│       │   ├── cmake_graph.py # Evaluation order: which files CMake actually reads
+│       │   ├── cmake_parser.py # Orchestration and the wrapper call graph
+│       │   ├── cmake_results.py # Data model, including TestSite
+│       │   ├── cmake_sites.py # Verdict and context per test site
+│       │   ├── common.py
+│       │   ├── __init__.py
+│       │   ├── sites_inventory.py # Serialises the sites as JSON Lines
+│       │   ├── source_collector.py
+│       │   └── tree_sitter_backend.py # Parser construction and query caching
 │       ├── __init__.py
 │       ├── __main__.py
 │       └── repo_languages.py # cloc based implementation for language analysis
 └── test_suite
     ├── __init__.py
     └── unit
+        ├── conftest.py # Shared parser fixtures
         ├── __init__.py
         ├── test_data
         │   ├── cloc.cfg
@@ -117,8 +211,9 @@ command line.
         │   └── sample_cloc.json
         ├── test_python_test_artifact_check.py
         ├── test_python_test_config_parsing.py
+        ├── test_r_test_config_parsing.py
         ├── test_repo_languages.py
-        └── test_r_test_config_parsing.py
+        ├── test_treesitter_cmake.py # Tests of the Tree-sitter CMake detector
 ```
 
 # Data Validation and Consistency
